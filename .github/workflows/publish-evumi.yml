@@ -1,0 +1,50 @@
+name: Publish Evumi VaultS3
+
+on:
+  push:
+    branches: [release/berth-cors]
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: evumi-vaults3-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.repository == 'evumi/VaultS3'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v6
+      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-buildx-action@v4
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and publish fixed revision
+        id: image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile.evumi
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ghcr.io/evumi/vaults3:sha-${{ github.sha }}
+          build-args: VERSION=v5.0.7-evumi-${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/evumi/VaultS3
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.licenses=AGPL-3.0
+          cache-from: type=gha,scope=evumi-vaults3
+          cache-to: type=gha,mode=max,scope=evumi-vaults3
+      - name: Record immutable image reference
+        env:
+          IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+        run: |
+          echo "ghcr.io/evumi/vaults3@${IMAGE_DIGEST}" >> "$GITHUB_STEP_SUMMARY"
